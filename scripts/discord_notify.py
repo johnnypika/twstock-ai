@@ -8,7 +8,10 @@ import requests
 from datetime import datetime
 
 WEBHOOK = os.environ.get("DISCORD_WEBHOOK", "")
+TW = timezone(timedelta(hours=8))   # 台灣 UTC+8
 
+def _now_tw():
+    return datetime.now(TW).strftime("%Y-%m-%d %H:%M")
 
 def _post(content: str) -> bool:
     if not WEBHOOK:
@@ -25,7 +28,7 @@ def _post(content: str) -> bool:
 def send_strategy(s: dict):
     if not s:
         return
-    ts      = datetime.now().strftime("%Y-%m-%d %H:%M")
+    ts      = _now_tw()
     prefer  = "、".join(s.get("偏重產業", [])) or "不限"
     exclude = "、".join(s.get("排除產業", [])) or "無"
     cond    = s.get("篩選條件", {})
@@ -44,7 +47,7 @@ def send_recommendations(recs: list):
         _post("⚠️ 今日無符合條件的推薦標的，建議觀望。")
         return
 
-    ts   = datetime.now().strftime("%Y-%m-%d %H:%M")
+    ts   = _now_tw()
     rank = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
     lines = [f"## 🏆 今日推薦入場清單 `{ts}`\n"]
 
@@ -65,7 +68,7 @@ def send_alert(code: str, name: str, alert_type: str,
                price: float, target: float, pnl: float):
     emoji = "🟢" if alert_type == "take_profit" else "🔴"
     label = "停利" if alert_type == "take_profit" else "停損"
-    ts    = datetime.now().strftime("%H:%M")
+    ts    = _now_tw()
     msg   = (
         f"{emoji} **{label}警報 [{ts}]**\n"
         f"**{name}（{code}）**\n"
