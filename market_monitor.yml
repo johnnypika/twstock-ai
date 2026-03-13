@@ -1,0 +1,61 @@
+name: 盤中持倉監控（第三層）
+
+on:
+  schedule:
+    # 台灣時間 09:00～13:30 每 5 分鐘，週一至週五
+    # UTC 01:00～05:30，以下 cron 組合覆蓋此區間
+    - cron: '0,5,10,15,20,25,30,35,40,45,50,55 1,2,3,4 * * 1-5'
+    - cron: '0,5,10,15,20,25 5 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4   # 每次執行最長 4 分鐘
+
+    steps:
+      - name: 取得程式碼
+        uses: actions/checkout@v4
+
+      - name: 設定 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 安裝套件
+        run: pip install -r requirements.txt
+
+      - name: 下載最新持倉與推薦資料
+        env:
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+        run: python scripts/gist_sync.py pull
+
+      - name: 檢查停損停利條件
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+        run: python scripts/layer3_monitor.py
+
+  # 收盤後盤後總結（台灣 13:30 = UTC 05:30）
+  closing-summary:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '30 5 * * 1-5'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: 下載資料
+        env:
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+        run: python scripts/gist_sync.py pull
+      - name: 推播盤後總結
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: python scripts/closing_summary.py
