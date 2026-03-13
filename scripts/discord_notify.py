@@ -5,7 +5,7 @@ Discord Webhook 推播工具
 
 import os
 import requests
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 WEBHOOK = os.environ.get("DISCORD_WEBHOOK", "")
 TW = timezone(timedelta(hours=8))   # 台灣 UTC+8
