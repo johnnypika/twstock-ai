@@ -1,0 +1,72 @@
+name: 盤前分析看門狗
+
+on:
+  schedule:
+    # 台灣時間 09:05 = UTC 01:05，週一至週五
+    - cron: '5 1 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 檢查今日盤前分析是否已執行
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'EOF'
+          import os, json, requests
+          from datetime import datetime, timezone, timedelta
+
+          TW = timezone(timedelta(hours=8))
+          now_tw = datetime.now(TW)
+          today  = now_tw.strftime('%Y-%m-%d')
+
+          # 查詢 morning_analysis workflow 最近一次執行狀態
+          token = os.environ['GH_TOKEN']
+          repo  = os.environ['REPO']
+          url   = f"https://api.github.com/repos/{repo}/actions/workflows/morning_analysis.yml/runs?per_page=5"
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json",
+          }
+          try:
+              r    = requests.get(url, headers=headers, timeout=10)
+              runs = r.json().get("workflow_runs", [])
+          except Exception as e:
+              print(f"API 查詢失敗: {e}")
+              runs = []
+
+          # 判斷今日是否有成功執行
+          ran_today = False
+          for run in runs:
+              run_time = run.get("created_at", "")[:10]  # "2026-03-16"
+              status   = run.get("status", "")
+              conclusion = run.get("conclusion", "")
+              if run_time == today and status == "completed":
+                  ran_today = True
+                  break
+
+          if ran_today:
+              print(f"[Watchdog] {today} 盤前分析已正常執行 ✅")
+          else:
+              # 送出 Discord 警報
+              webhook = os.environ.get('DISCORD_WEBHOOK', '')
+              ts = now_tw.strftime('%H:%M')
+              msg = (
+                  f"## ⚠️ 盤前分析異常警報 `{today} {ts}`\n"
+                  f"今日盤前分析（第零層+第一層+第二層）**尚未執行或執行失敗**。\n"
+                  f"請至以下網址手動觸發，或前往 Dashboard 使用手動觸發按鈕：\n"
+                  f"https://github.com/{repo}/actions/workflows/morning_analysis.yml\n"
+                  f"@here"
+              )
+              if webhook:
+                  requests.post(webhook, json={"content": msg}, timeout=10)
+                  print(f"[Watchdog] 異常警報已送出 Discord")
+              else:
+                  print(f"[Watchdog] DISCORD_WEBHOOK 未設定，無法發送警報")
+          EOF
