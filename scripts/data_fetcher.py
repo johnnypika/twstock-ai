@@ -43,19 +43,36 @@ def get_all_stocks() -> list:
 
 def get_stock_price(code: str) -> float | None:
     """取得單一股票即時成交價"""
-    url = (
-        f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
-        f"?ex_ch=tse_{code}.tw&json=1&delay=0"
-    )
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=8)
-        items = r.json().get("msgArray", [])
-        if items:
-            price = items[0].get("z") or items[0].get("y")
-            if price and price != "-":
-                return float(price)
-    except Exception:
-        pass
+    info = get_stock_info(code)
+    return info.get("price") if info else None
+
+
+def get_stock_info(code: str) -> dict | None:
+    """
+    取得單一股票的即時資訊，包含：
+      price      : 最新成交價
+      prev_close : 昨日收盤價（今日平盤）
+    """
+    # 先嘗試上市（tse），失敗再試上櫃（otc）
+    for market in ("tse", "otc"):
+        url = (
+            f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
+            f"?ex_ch={market}_{code}.tw&json=1&delay=0"
+        )
+        try:
+            r     = requests.get(url, headers=HEADERS, timeout=8)
+            items = r.json().get("msgArray", [])
+            if not items:
+                continue
+            item = items[0]
+            z = item.get("z", "-")   # 即時成交價
+            y = item.get("y", "-")   # 昨收價
+            price      = float(z) if z and z != "-" else None
+            prev_close = float(y) if y and y != "-" else None
+            if price or prev_close:
+                return {"price": price, "prev_close": prev_close}
+        except Exception:
+            continue
     return None
 
 
