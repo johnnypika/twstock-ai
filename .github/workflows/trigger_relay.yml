@@ -1,0 +1,63 @@
+name: 手動觸發中繼
+
+# 接收來自網頁的 repository_dispatch 事件
+# 網頁只需要傳一組自訂密碼，不需要 PAT token
+on:
+  repository_dispatch:
+    types: [manual-trigger]
+  workflow_dispatch:
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: 驗證密碼並觸發盤前分析
+        env:
+          EXPECTED_SECRET: ${{ secrets.TRIGGER_SECRET }}
+          RECEIVED_SECRET: ${{ github.event.client_payload.secret }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          python3 - <<'EOF'
+          import os, requests
+
+          expected = os.environ.get('EXPECTED_SECRET', '')
+          received = os.environ.get('RECEIVED_SECRET', '')
+          repo     = os.environ.get('REPO', '')
+          token    = os.environ.get('GH_TOKEN', '')
+          webhook  = os.environ.get('DISCORD_WEBHOOK', '')
+
+          # workflow_dispatch 手動觸發時跳過密碼驗證
+          event_name = os.environ.get('GITHUB_EVENT_NAME', '')
+          if event_name == 'workflow_dispatch':
+              print("[Relay] workflow_dispatch 手動觸發，跳過密碼驗證")
+          elif not expected:
+              print("[Relay] TRIGGER_SECRET 未設定，請至 Secrets 新增")
+              exit(1)
+          elif received != expected:
+              print("[Relay] 密碼驗證失敗，拒絕觸發")
+              exit(1)
+          else:
+              print("[Relay] 密碼驗證成功")
+
+          # 觸發 morning_analysis workflow
+          url = f"https://api.github.com/repos/{repo}/actions/workflows/morning_analysis.yml/dispatches"
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json",
+          }
+          r = requests.post(url, headers=headers, json={"ref": "main"}, timeout=10)
+
+          if r.status_code == 204:
+              print("[Relay] 盤前分析已成功觸發 ✅")
+              if webhook:
+                  requests.post(webhook, json={
+                      "content": "▶️ **手動觸發盤前分析**\n已收到觸發指令，約 5～50 分鐘後推播分析結果。"
+                  }, timeout=10)
+          else:
+              print(f"[Relay] 觸發失敗 HTTP {r.status_code}: {r.text}")
+              exit(1)
+          EOF
