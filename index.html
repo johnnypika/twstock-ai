@@ -17,6 +17,8 @@
     --red:       #ff4d6d;
     --green:     #00d4aa;
     --yellow:    #ffd166;
+    --up:        #ff4d6d;   /* 台股：紅色為漲 */
+    --down:      #00d4aa;   /* 台股：綠色為跌 */
     --text:      #e2e8f0;
     --muted:     #64748b;
     --mono:      'JetBrains Mono', monospace;
@@ -276,8 +278,8 @@
     border-radius: 0 2px 2px 0;
   }
 
-  .position-card.profit::before { background: var(--green); }
-  .position-card.loss::before   { background: var(--red); }
+  .position-card.profit::before { background: var(--up); }
+  .position-card.loss::before   { background: var(--down); }
 
   .position-card:hover {
     border-color: rgba(0,212,170,.3);
@@ -311,8 +313,8 @@
     margin-top: .2rem;
   }
 
-  .pnl.up   { color: var(--green); }
-  .pnl.down { color: var(--red); }
+  .pnl.up   { color: var(--up); }
+  .pnl.down { color: var(--down); }
 
   .targets {
     display: flex;
@@ -330,15 +332,15 @@
   }
 
   .target-tag.tp {
-    background: rgba(0,212,170,.1);
-    color: var(--green);
-    border: 1px solid rgba(0,212,170,.2);
+    background: rgba(255,77,109,.1);
+    color: var(--up);
+    border: 1px solid rgba(255,77,109,.2);
   }
 
   .target-tag.sl {
-    background: rgba(255,77,109,.1);
-    color: var(--red);
-    border: 1px solid rgba(255,77,109,.2);
+    background: rgba(0,212,170,.1);
+    color: var(--down);
+    border: 1px solid rgba(0,212,170,.2);
   }
 
   .position-actions {
@@ -518,8 +520,8 @@
   }
 
   .rec-price-item.entry .rec-price-value { color: var(--accent2); }
-  .rec-price-item.tp    .rec-price-value { color: var(--green); }
-  .rec-price-item.sl    .rec-price-value { color: var(--red); }
+  .rec-price-item.tp    .rec-price-value { color: var(--up); }
+  .rec-price-item.sl    .rec-price-value { color: var(--down); }
 
   .rec-meta {
     display: flex;
@@ -594,8 +596,8 @@
     font-family: var(--sans);
   }
 
-  .chg-up   { color: var(--green); }
-  .chg-down { color: var(--red); }
+  .chg-up   { color: var(--up); }
+  .chg-down { color: var(--down); }
 
   /* ── 空狀態 ── */
   .empty-state {
@@ -1393,7 +1395,7 @@ function renderPortfolio() {
   if (hasPrice && totalCost > 0) {
     const totalPnlAmt = totalValue - totalCost;
     const totalPnlPct = (totalPnlAmt / totalCost * 100);
-    const amtColor  = totalPnlAmt >= 0 ? 'var(--green)' : 'var(--red)';
+    const amtColor  = totalPnlAmt >= 0 ? 'var(--up)' : 'var(--down)';
     document.getElementById('sum-pnl-amount').innerHTML =
       `<span style="color:${amtColor}">${totalPnlAmt >= 0 ? '+' : ''}${totalPnlAmt.toFixed(0)} 元</span>`;
     document.getElementById('sum-pnl-pct').innerHTML =
@@ -1418,7 +1420,7 @@ function renderPortfolio() {
     if (cp) {
       const pnlPct = ((cp - cost) / cost * 100);
       const pnlAmt = (cp - cost) * shares;
-      const color  = pnlPct >= 0 ? 'var(--green)' : 'var(--red)';
+      const color  = pnlPct >= 0 ? 'var(--up)' : 'var(--down)';
       const arrow  = pnlPct >= 0 ? '▲' : '▼';
       priceBlock = `
         <div style="grid-column:1/-1;background:var(--surface);border-radius:8px;padding:.6rem 1rem;
