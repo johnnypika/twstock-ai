@@ -1770,11 +1770,19 @@ function getDemoCandidates() {
 //  密碼保護（設定值已移至頂端設定區）
 // ══════════════════════════════════════════
 
+async function generateHash() {
+  const pw  = 'twstock2026';
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
+  const hash = [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2,'0')).join('');
+  console.log('[Auth] 預設密碼 hash:', hash);
+  return hash;
+}
+
 let _realHash = '';
 generateHash().then(h => { _realHash = h; });
 
 const SESSION_KEY = 'twstock_auth';
-const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 小時後需重新登入
+const SESSION_TTL = 8 * 60 * 60 * 1000;
 
 async function unlock() {
   const input = document.getElementById('lock-input').value;
