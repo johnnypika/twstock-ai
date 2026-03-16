@@ -3,13 +3,15 @@ scripts/layer3_monitor.py — 第三層：持倉監控
 每次由 GitHub Actions 每 5 分鐘觸發，執行一輪檢查
 """
 import json, os, sys
+from datetime import datetime, timezone, timedelta
 sys.path.insert(0, os.path.dirname(__file__))
 
 from data_fetcher   import get_stock_price
-from discord_notify import send_alert, send_text
+from discord_notify import send_alert
 from gist_sync      import push
 
 DATA = os.path.join(os.path.dirname(__file__), "..", "data")
+TW   = timezone(timedelta(hours=8))
 
 def run():
     port_path = os.path.join(DATA, "portfolio.json")
@@ -25,14 +27,17 @@ def run():
         return
 
     print(f"監控 {len(portfolio)} 筆持倉...")
-    updated = False
+    any_price_updated = False
+    alert_updated     = False
+
+    now_str = datetime.now(TW).strftime("%H:%M")
 
     for pos in portfolio:
-        code  = pos["code"]
-        name  = pos["name"]
-        cost  = float(pos["cost"])
-        tp    = float(pos["take_profit"])
-        sl    = float(pos["stop_loss"])
+        code = pos["code"]
+        name = pos["name"]
+        cost = float(pos["cost"])
+        tp   = float(pos["take_profit"])
+        sl   = float(pos["stop_loss"])
 
         price = get_stock_price(code)
         if price is None:
@@ -42,25 +47,28 @@ def run():
         pnl = (price - cost) / cost * 100
         pos["current_price"] = price
         pos["pnl_pct"]       = round(pnl, 2)
+        pos["last_updated"]  = now_str
+        any_price_updated    = True
         print(f"  {name}({code}) 現價:{price} 損益:{pnl:+.2f}%")
 
         # 停利
         if price >= tp and not pos.get("alerted_tp"):
             send_alert(code, name, "take_profit", price, tp, pnl)
             pos["alerted_tp"] = True
-            updated = True
+            alert_updated = True
 
         # 停損
         if price <= sl and not pos.get("alerted_sl"):
             send_alert(code, name, "stop_loss", price, sl, pnl)
             pos["alerted_sl"] = True
-            updated = True
+            alert_updated = True
 
-    if updated:
+    # 只要有取到任何現價就存檔並推送（不限於有警報才推）
+    if any_price_updated:
         with open(port_path, "w", encoding="utf-8") as f:
             json.dump(portfolio, f, ensure_ascii=False, indent=2)
-        push()  # 立即同步回 Gist
-        print("持倉狀態已更新並同步")
+        push()
+        print(f"持倉現價已更新並同步 Gist（有警報:{alert_updated}）")
 
 if __name__ == "__main__":
     run()
