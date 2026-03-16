@@ -1627,15 +1627,12 @@ function checkSession() {
 
 // ══════════════════════════════════════════
 //  手動觸發 GitHub Actions
-//  透過 trigger_relay.yml 中繼，網頁只持有自訂觸發密碼
-//  真正的 PAT 藏在 GitHub Secrets，網頁完全不知道
+//  PAT 僅限此 repo 的 Actions:write，無其他權限
 // ══════════════════════════════════════════
 
-const GH_OWNER        = 'johnnypika';
-const GH_REPO         = 'twstock-ai';
-// TRIGGER_SECRET：你在 GitHub Secrets 設定的自訂觸發密碼
-// 這組密碼只能觸發分析，無法存取你的 GitHub 帳號
-const TRIGGER_SECRET  = 'mystock@9988';
+const GH_OWNER  = 'johnnypika';
+const GH_REPO   = 'twstock-ai';
+const GH_PAT    = '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';
 
 async function triggerAnalysis() {
   const btn = document.getElementById('trigger-btn');
@@ -1644,28 +1641,23 @@ async function triggerAnalysis() {
 
   try {
     const res = await fetch(
-      `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/dispatches`,
+      `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/actions/workflows/morning_analysis.yml/dispatches`,
       {
         method: 'POST',
         headers: {
-          // repository_dispatch 需要 public_repo scope 的 token
-          // 但對 public repo 其實不需要認證也能送出
+          'Authorization': `Bearer ${GH_PAT}`,
           'Accept': 'application/vnd.github+json',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          event_type: 'manual-trigger',
-          client_payload: { secret: TRIGGER_SECRET },
-        }),
+        body: JSON.stringify({ ref: 'main' }),
       }
     );
-
-    if (res.status === 204 || res.status === 200) {
-      showToast('✅ 觸發指令已送出！Discord 稍後會收到通知');
+    if (res.status === 204) {
+      showToast('✅ 已觸發！約 5～50 分鐘後 Discord 收到通知');
       btn.textContent = '✅ 已觸發';
       setTimeout(() => { btn.disabled = false; btn.textContent = '▶ 手動觸發分析'; }, 60000);
-    } else if (res.status === 422) {
-      showToast('❌ Workflow 未啟用，請確認 trigger_relay.yml 已上傳');
+    } else if (res.status === 401) {
+      showToast('❌ Token 無效，請更新 index.html 裡的 GH_PAT');
       btn.disabled = false; btn.textContent = '▶ 手動觸發分析';
     } else {
       showToast(`❌ 觸發失敗 HTTP ${res.status}`);
