@@ -1,24 +1,24 @@
 """
 scripts/update_pages.py
-把 data/ 裡的 JSON 複製到 web/ 目錄
-GitHub Pages 會自動從 web/ 提供靜態檔案
+確認 data/ 資料夾的 JSON 狀態
+GitHub Pages 從根目錄提供靜態檔案，data/ 就在根目錄下
+index.html 也在根目錄，路徑完全對應
 """
-import os, json, shutil
+import os
 
 ROOT     = os.path.join(os.path.dirname(__file__), "..")
 DATA_DIR = os.path.join(ROOT, "data")
-WEB_DIR  = os.path.join(ROOT, "web")
-
-os.makedirs(WEB_DIR, exist_ok=True)
 
 FILES = ["recommendations.json", "candidates.json",
          "today_strategy.json", "portfolio.json"]
 
+print("[Pages] 確認資料檔案狀態：")
 for fname in FILES:
-    src = os.path.join(DATA_DIR, fname)
-    dst = os.path.join(WEB_DIR, fname)
-    if os.path.exists(src):
-        shutil.copy2(src, dst)
-        print(f"[Pages] 複製 {fname} 到 web/")
+    path = os.path.join(DATA_DIR, fname)
+    if os.path.exists(path):
+        size = os.path.getsize(path)
+        print(f"  OK data/{fname} ({size} bytes)")
+    else:
+        print(f"  MISSING data/{fname}")
 
-print("[Pages] 更新完成")
+print("[Pages] 完成")
