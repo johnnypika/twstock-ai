@@ -60,22 +60,35 @@ def get_stock_price(code: str) -> float | None:
 
 
 def get_taiex() -> dict:
-    """大盤加權指數最新收盤資料"""
+    """大盤加權指數最新收盤資料（取最近一個交易日，不限今日）"""
     url = "https://openapi.twse.com.tw/v1/exchangeReport/TAIEX"
     try:
         r    = requests.get(url, headers=HEADERS, timeout=10)
         data = r.json()
+        # 取最後一筆有效資料（週一盤前抓到的是上週五收盤，仍然有效）
         if data:
             last = data[-1]
-            return {
+            result = {
                 "date":       last.get("Date", ""),
-                "close":      float(last.get("CloseIndex", 0)),
-                "change":     float(last.get("Change", 0)),
-                "change_pct": float(last.get("ChangePercent", 0)),
+                "close":      float(last.get("CloseIndex", 0) or 0),
+                "change":     float(last.get("Change", 0) or 0),
+                "change_pct": float(last.get("ChangePercent", 0) or 0),
             }
+            if result["close"] > 0:
+                print(f"[TWSE] 大盤資料：{result['date']} 收盤 {result['close']} 點 {result['change_pct']:+.2f}%")
+                return result
     except Exception as e:
         print(f"[TWSE] 大盤資料失敗: {e}")
-    return {}
+
+    # 備援：回傳中性預設值，讓 LLM 知道資料暫時無法取得
+    print("[TWSE] 大盤資料無法取得，使用備援預設值")
+    return {
+        "date":       "N/A",
+        "close":      0,
+        "change":     0,
+        "change_pct": 0,
+        "note":       "資料暫時無法取得，請依近期走勢判斷",
+    }
 
 
 def get_moving_averages(code: str) -> dict:
