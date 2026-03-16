@@ -932,6 +932,23 @@
   <!-- ── 持倉管理頁 ── -->
   <div class="page" id="page-portfolio">
 
+    <!-- 總損益摘要列 -->
+    <div id="portfolio-summary" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1rem;display:flex;gap:2rem;flex-wrap:wrap;align-items:center;">
+      <div>
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.2rem">持倉數量</div>
+        <div id="sum-count" style="font-family:var(--mono);font-size:1rem;font-weight:600">0 檔</div>
+      </div>
+      <div>
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.2rem">總損益金額</div>
+        <div id="sum-pnl-amount" style="font-family:var(--mono);font-size:1rem;font-weight:600">— 元</div>
+      </div>
+      <div>
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.2rem">總損益%</div>
+        <div id="sum-pnl-pct" style="font-family:var(--mono);font-size:1rem;font-weight:600">—</div>
+      </div>
+      <div style="margin-left:auto;font-size:.7rem;color:var(--muted)" id="sum-update-time"></div>
+    </div>
+
     <div class="section-header">
       <div class="section-title">持倉列表</div>
       <button class="btn btn-primary" onclick="toggleAddForm()">
@@ -943,13 +960,16 @@
     <div class="add-form" id="add-form">
       <div style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;font-weight:600">新增持倉</div>
       <div class="form-grid">
-        <div class="form-group">
-          <label>股票代號 *</label>
-          <input type="text" id="f-code" placeholder="例：2330" maxlength="6">
+        <div class="form-group" style="position:relative">
+          <label>股票代號或名稱 *</label>
+          <input type="text" id="f-code" placeholder="輸入代號或名稱，例：2330 或 台積"
+                 autocomplete="off" oninput="searchStock(this.value)" onblur="hideDropdown()" maxlength="20">
+          <div id="stock-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;z-index:50;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.3)"></div>
         </div>
         <div class="form-group">
-          <label>股票名稱 *</label>
-          <input type="text" id="f-name" placeholder="例：台積電">
+          <label>股票名稱</label>
+          <input type="text" id="f-name" placeholder="選代號後自動帶入" readonly
+                 style="background:var(--surface2);cursor:default">
         </div>
         <div class="form-group">
           <label>成本價（元）*</label>
@@ -1027,16 +1047,23 @@
 <div id="toast"></div>
 
 <script>
-// ══════════════════════════════════════════
-//  設定：只需填這兩個值
-// ══════════════════════════════════════════
+// ╔══════════════════════════════════════════════════════╗
+//  ★ 設定區（每次更新 index.html 只需要改這裡）★
+// ╠══════════════════════════════════════════════════════╣
+//
+//  1. 網頁登入密碼的 SHA-256 hash
+//     換密碼方法：在 Console 執行下方指令取得新 hash：
+//     crypto.subtle.digest('SHA-256',new TextEncoder().encode('你的新密碼'))
+//       .then(b=>console.log([...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')))
+const PASSWORD_HASH = '2327000ce08aab943ae590e916e8bcb431b8395f0f5682d9a20b1568c477e09b';
 
-// Cloudflare Worker 網址（部署後填入）
-const WORKER_URL   = 'https://twstock-trigger.j7366515.workers.dev';
+//  2. Cloudflare Worker 網址
+const WORKER_URL    = 'https://twstock-trigger.j7366515.workers.dev';
 
-// 觸發分析的密碼（給親友用，和 Worker 的 TRIGGER_PASS 一致）
-// 這不是 GitHub token，洩漏了頂多讓人多跑幾次分析
-const TRIGGER_PASS = 'qweasd123456';
+//  3. 手動觸發分析的密碼（給親友用，和 Worker 的 TRIGGER_PASS 一致）
+const TRIGGER_PASS  = 'qweasd123456';
+//
+// ╚══════════════════════════════════════════════════════╝
 
 // ══════════════════════════════════════════
 //  持倉資料管理（透過 Worker 讀寫 Gist）
@@ -1337,23 +1364,90 @@ function renderPortfolio() {
   const el = document.getElementById('portfolio-list');
   document.getElementById('port-badge').textContent = portfolio.length;
 
+  // 計算總損益
+  const sumEl = document.getElementById('portfolio-summary');
   if (portfolio.length === 0) {
     el.innerHTML = `<div class="empty-state">
       <div class="empty-icon">💼</div>
       <h3>尚無持倉</h3>
       <p>點擊「新增持倉」按鈕新增你的部位<br>或從今日推薦清單直接加入</p>
     </div>`;
+    sumEl.style.display = 'none';
     return;
   }
 
-  el.innerHTML = portfolio.map(p => {
+  // 總損益計算
+  let totalCost = 0, totalValue = 0, hasPrice = false;
+  portfolio.forEach(p => {
     const cost = +p.cost;
-    const cp   = p.current_price || cost;
-    const pnl  = ((cp - cost) / cost * 100).toFixed(2);
-    const pnlUp = pnl >= 0;
+    const shares = +p.shares || 0;
+    const cp = p.current_price || null;
+    if (cp && shares > 0) {
+      totalCost  += cost * shares;
+      totalValue += cp * shares;
+      hasPrice = true;
+    }
+  });
+  sumEl.style.display = 'flex';
+  document.getElementById('sum-count').textContent = `${portfolio.length} 檔`;
+  if (hasPrice && totalCost > 0) {
+    const totalPnlAmt = totalValue - totalCost;
+    const totalPnlPct = (totalPnlAmt / totalCost * 100);
+    const amtColor  = totalPnlAmt >= 0 ? 'var(--green)' : 'var(--red)';
+    document.getElementById('sum-pnl-amount').innerHTML =
+      `<span style="color:${amtColor}">${totalPnlAmt >= 0 ? '+' : ''}${totalPnlAmt.toFixed(0)} 元</span>`;
+    document.getElementById('sum-pnl-pct').innerHTML =
+      `<span style="color:${amtColor}">${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct.toFixed(2)}%</span>`;
+  } else {
+    document.getElementById('sum-pnl-amount').textContent = '— 元（未取得現價）';
+    document.getElementById('sum-pnl-pct').textContent = '—';
+  }
+  document.getElementById('sum-update-time').textContent =
+    portfolio[0]?.last_updated ? `更新：${portfolio[0].last_updated}` : '';
+
+  el.innerHTML = portfolio.map(p => {
+    const cost   = +p.cost;
+    const shares = +p.shares || 0;
+    const cp     = p.current_price || null;
     const cardClass = p.alerted_tp ? 'profit' : p.alerted_sl ? 'loss' : '';
-    const tpPct = (((+p.take_profit - cost) / cost) * 100).toFixed(1);
-    const slPct = (((+p.stop_loss  - cost) / cost) * 100).toFixed(1);
+    const tpPct  = (((+p.take_profit - cost) / cost) * 100).toFixed(1);
+    const slPct  = (((+p.stop_loss  - cost) / cost) * 100).toFixed(1);
+
+    // 現價損益區塊
+    let priceBlock = '';
+    if (cp) {
+      const pnlPct = ((cp - cost) / cost * 100);
+      const pnlAmt = (cp - cost) * shares;
+      const color  = pnlPct >= 0 ? 'var(--green)' : 'var(--red)';
+      const arrow  = pnlPct >= 0 ? '▲' : '▼';
+      priceBlock = `
+        <div style="grid-column:1/-1;background:var(--surface);border-radius:8px;padding:.6rem 1rem;
+                    display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center;margin-top:.25rem">
+          <div>
+            <div style="font-size:.65rem;color:var(--muted);margin-bottom:.1rem">現價</div>
+            <div style="font-family:var(--mono);font-size:.95rem;font-weight:600;color:${color}">
+              ${arrow} $${cp}
+            </div>
+          </div>
+          <div>
+            <div style="font-size:.65rem;color:var(--muted);margin-bottom:.1rem">損益%</div>
+            <div style="font-family:var(--mono);font-size:.95rem;font-weight:600;color:${color}">
+              ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%
+            </div>
+          </div>
+          ${shares > 0 ? `
+          <div>
+            <div style="font-size:.65rem;color:var(--muted);margin-bottom:.1rem">損益金額</div>
+            <div style="font-family:var(--mono);font-size:.95rem;font-weight:600;color:${color}">
+              ${pnlAmt >= 0 ? '+' : ''}${pnlAmt.toFixed(0)} 元
+            </div>
+          </div>` : ''}
+        </div>`;
+    } else {
+      priceBlock = `<div style="grid-column:1/-1;font-size:.72rem;color:var(--muted);
+                       margin-top:.25rem;padding:.4rem 0">
+        現價尚未更新（盤中監控觸發後自動顯示）</div>`;
+    }
 
     return `
     <div class="position-card ${cardClass}">
@@ -1366,14 +1460,15 @@ function renderPortfolio() {
         <div style="font-size:.72rem;color:var(--muted);margin-bottom:.4rem">成本 / 股數</div>
         <div style="font-family:var(--mono);font-size:.9rem">
           <span style="font-size:1rem;font-weight:600">$${cost.toFixed(2)}</span>
-          <span style="color:var(--muted);margin-left:.5rem">${(p.shares||0).toLocaleString()} 股</span>
+          <span style="color:var(--muted);margin-left:.5rem">${shares.toLocaleString()} 股</span>
         </div>
       </div>
       <div class="targets">
         <div class="target-tag tp">▲ 停利 ${p.take_profit} <span style="opacity:.6">(+${tpPct}%)</span></div>
         <div class="target-tag sl">▼ 停損 ${p.stop_loss} <span style="opacity:.6">(${slPct}%)</span></div>
       </div>
-      <div class="position-actions">
+      ${priceBlock}
+      <div class="position-actions" style="grid-column:1/-1;justify-content:flex-end">
         <button class="btn btn-ghost" style="font-size:.75rem;padding:.4rem .75rem"
           onclick="openEditModal('${p.code}')">編輯</button>
         <button class="btn btn-danger" style="font-size:.75rem;padding:.4rem .75rem"
@@ -1387,24 +1482,100 @@ function toggleAddForm() {
   const f = document.getElementById('add-form');
   const isOpen = f.classList.toggle('open');
   document.getElementById('add-btn-text').textContent = isOpen ? '✕ 取消' : '＋ 新增持倉';
-  if (!isOpen) clearAddForm();
+  if (!isOpen) {
+    clearAddForm();
+  } else {
+    loadStockList();   // 預先載入股票清單
+    setTimeout(() => document.getElementById('f-code').focus(), 100);
+  }
 }
 
 function clearAddForm() {
   ['f-code','f-name','f-cost','f-shares','f-tp','f-sl','f-note'].forEach(id => {
     document.getElementById(id).value = '';
   });
+  document.getElementById('stock-dropdown').style.display = 'none';
+}
+
+// ── 股票模糊搜尋 ──
+
+let _stockList = [];   // 從 TWSE 載入的全市場股票清單
+let _dropdownTimer = null;
+
+async function loadStockList() {
+  if (_stockList.length > 0) return;
+  try {
+    const r = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL');
+    const data = await r.json();
+    _stockList = data
+      .filter(d => d.證券代號 && d.證券名稱)
+      .map(d => ({ code: d.證券代號.trim(), name: d.證券名稱.trim() }));
+  } catch {
+    // 若 API 失敗，用內建常用清單
+    _stockList = [
+      {code:'2330',name:'台積電'},{code:'2317',name:'鴻海'},{code:'2454',name:'聯發科'},
+      {code:'2382',name:'廣達'},{code:'2308',name:'台達電'},{code:'2357',name:'華碩'},
+      {code:'2303',name:'聯電'},{code:'2412',name:'中華電'},{code:'2882',name:'國泰金'},
+      {code:'2881',name:'富邦金'},{code:'2886',name:'兆豐金'},{code:'2891',name:'中信金'},
+      {code:'2603',name:'長榮'},{code:'2609',name:'陽明'},{code:'2615',name:'萬海'},
+      {code:'6505',name:'台塑化'},{code:'1301',name:'台塑'},{code:'1303',name:'南亞'},
+      {code:'3711',name:'日月光投控'},{code:'2344',name:'華邦電'},{code:'6770',name:'力積電'},
+      {code:'3008',name:'大立光'},{code:'2379',name:'瑞昱'},{code:'3515',name:'華擎'},
+      {code:'6669',name:'緯穎'},{code:'8044',name:'網家'},{code:'3624',name:'光隆精工'},
+    ];
+  }
+}
+
+function searchStock(val) {
+  clearTimeout(_dropdownTimer);
+  const dd = document.getElementById('stock-dropdown');
+  const q  = val.trim();
+
+  if (!q) { dd.style.display = 'none'; return; }
+
+  _dropdownTimer = setTimeout(async () => {
+    await loadStockList();
+    const results = _stockList.filter(s =>
+      s.code.startsWith(q) || s.name.includes(q)
+    ).slice(0, 8);
+
+    if (!results.length) { dd.style.display = 'none'; return; }
+
+    dd.innerHTML = results.map(s => `
+      <div onmousedown="selectStock('${s.code}','${s.name}')"
+           style="padding:.6rem 1rem;cursor:pointer;font-size:.85rem;
+                  border-bottom:1px solid var(--border);font-family:var(--mono);"
+           onmouseover="this.style.background='var(--surface2)'"
+           onmouseout="this.style.background=''">
+        <span style="color:var(--accent2);margin-right:.75rem">${s.code}</span>
+        <span style="color:var(--text)">${s.name}</span>
+      </div>`).join('');
+    dd.style.display = 'block';
+  }, 150);
+}
+
+function selectStock(code, name) {
+  document.getElementById('f-code').value = code;
+  document.getElementById('f-name').value = name;
+  document.getElementById('stock-dropdown').style.display = 'none';
+  document.getElementById('f-cost').focus();
+}
+
+function hideDropdown() {
+  setTimeout(() => {
+    document.getElementById('stock-dropdown').style.display = 'none';
+  }, 200);
 }
 
 function addPosition() {
   const code = document.getElementById('f-code').value.trim();
-  const name = document.getElementById('f-name').value.trim();
+  const name = document.getElementById('f-name').value.trim() || code;
   const cost = parseFloat(document.getElementById('f-cost').value);
   const tp   = parseFloat(document.getElementById('f-tp').value);
   const sl   = parseFloat(document.getElementById('f-sl').value);
 
-  if (!code || !name || isNaN(cost) || isNaN(tp) || isNaN(sl)) {
-    showToast('⚠ 請填寫必填欄位（代號、名稱、成本、停利、停損）');
+  if (!code || isNaN(cost) || isNaN(tp) || isNaN(sl)) {
+    showToast('⚠ 請填寫必填欄位（代號、成本、停利、停損）');
     return;
   }
 
@@ -1596,27 +1767,8 @@ function getDemoCandidates() {
 }
 
 // ══════════════════════════════════════════
-//  密碼保護
-//  修改密碼：把你的新密碼貼到 hashPassword() 裡跑一次，
-//  複製輸出的 hash，取代下方 PASSWORD_HASH 的值即可。
+//  密碼保護（設定值已移至頂端設定區）
 // ══════════════════════════════════════════
-
-// 預設密碼：twstock2026
-// 要換密碼時，在瀏覽器 console 執行：
-//   crypto.subtle.digest('SHA-256', new TextEncoder().encode('你的新密碼'))
-//     .then(b => console.log([...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')))
-// 複製輸出的 hash 貼到下面取代
-const PASSWORD_HASH = '2327000ce08aab943ae590e916e8bcb431b8395f0f5682d9a20b1568c477e09b';
-// ↑ 這是佔位符，執行下方 generateHash() 取得真正的 hash
-
-// 系統啟動時自動產生正確 hash（只執行一次，印在 console）
-async function generateHash() {
-  const pw = 'twstock2026';
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
-  const hash = [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2,'0')).join('');
-  console.log('[Auth] 預設密碼 hash:', hash);
-  return hash;
-}
 
 let _realHash = '';
 generateHash().then(h => { _realHash = h; });
