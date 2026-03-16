@@ -941,11 +941,19 @@
         <div id="sum-count" style="font-family:var(--mono);font-size:1rem;font-weight:600">0 檔</div>
       </div>
       <div>
-        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.2rem">總損益金額</div>
-        <div id="sum-pnl-amount" style="font-family:var(--mono);font-size:1rem;font-weight:600">— 元</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.2rem">今日損益金額</div>
+        <div id="sum-today-amount" style="font-family:var(--mono);font-size:1rem;font-weight:600">—</div>
       </div>
       <div>
-        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.2rem">總損益%</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.2rem">今日損益%</div>
+        <div id="sum-today-pct" style="font-family:var(--mono);font-size:1rem;font-weight:600">—</div>
+      </div>
+      <div style="border-left:1px solid var(--border);padding-left:2rem">
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.2rem">總損益金額（成本）</div>
+        <div id="sum-pnl-amount" style="font-family:var(--mono);font-size:1rem;font-weight:600">—</div>
+      </div>
+      <div>
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.2rem">總損益%（成本）</div>
         <div id="sum-pnl-pct" style="font-family:var(--mono);font-size:1rem;font-weight:600">—</div>
       </div>
       <div style="margin-left:auto;font-size:.7rem;color:var(--muted)" id="sum-update-time"></div>
@@ -1378,30 +1386,52 @@ function renderPortfolio() {
     return;
   }
 
-  // 總損益計算
+  // 總損益計算（成本基準 + 今日基準）
   let totalCost = 0, totalValue = 0, hasPrice = false;
+  let totalPrevValue = 0, hasPrevClose = false;
   portfolio.forEach(p => {
-    const cost = +p.cost;
+    const cost   = +p.cost;
     const shares = +p.shares || 0;
-    const cp = p.current_price || null;
+    const cp     = p.current_price  || null;
+    const pc     = p.prev_close     || null;
     if (cp && shares > 0) {
       totalCost  += cost * shares;
-      totalValue += cp * shares;
-      hasPrice = true;
+      totalValue += cp   * shares;
+      hasPrice    = true;
+    }
+    if (cp && pc && shares > 0) {
+      totalPrevValue += pc * shares;
+      hasPrevClose    = true;
     }
   });
   sumEl.style.display = 'flex';
   document.getElementById('sum-count').textContent = `${portfolio.length} 檔`;
+
+  // 今日損益（現價 vs 昨收）
+  if (hasPrevClose) {
+    const todayAmt = totalValue - totalPrevValue;
+    const todayPct = (todayAmt / totalPrevValue * 100);
+    const tc = todayAmt >= 0 ? 'var(--up)' : 'var(--down)';
+    document.getElementById('sum-today-amount').innerHTML =
+      `<span style="color:${tc}">${todayAmt >= 0 ? '+' : ''}${todayAmt.toFixed(0)} 元</span>`;
+    document.getElementById('sum-today-pct').innerHTML =
+      `<span style="color:${tc}">${todayPct >= 0 ? '+' : ''}${todayPct.toFixed(2)}%</span>`;
+  } else {
+    document.getElementById('sum-today-amount').textContent = '— （昨收價未取得）';
+    document.getElementById('sum-today-pct').textContent = '—';
+  }
+
+  // 總損益（現價 vs 成本）
   if (hasPrice && totalCost > 0) {
     const totalPnlAmt = totalValue - totalCost;
     const totalPnlPct = (totalPnlAmt / totalCost * 100);
-    const amtColor  = totalPnlAmt >= 0 ? 'var(--up)' : 'var(--down)';
+    const ac = totalPnlAmt >= 0 ? 'var(--up)' : 'var(--down)';
     document.getElementById('sum-pnl-amount').innerHTML =
-      `<span style="color:${amtColor}">${totalPnlAmt >= 0 ? '+' : ''}${totalPnlAmt.toFixed(0)} 元</span>`;
+      `<span style="color:${ac}">${totalPnlAmt >= 0 ? '+' : ''}${totalPnlAmt.toFixed(0)} 元</span>`;
     document.getElementById('sum-pnl-pct').innerHTML =
-      `<span style="color:${amtColor}">${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct.toFixed(2)}%</span>`;
+      `<span style="color:${ac}">${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct.toFixed(2)}%</span>`;
   } else {
-    document.getElementById('sum-pnl-amount').textContent = '— 元（未取得現價）';
+    document.getElementById('sum-pnl-amount').textContent = '— （未取得現價）';
     document.getElementById('sum-pnl-pct').textContent = '—';
   }
   document.getElementById('sum-update-time').textContent =
@@ -1411,6 +1441,7 @@ function renderPortfolio() {
     const cost   = +p.cost;
     const shares = +p.shares || 0;
     const cp     = p.current_price || null;
+    const pc     = p.prev_close    || null;
     const cardClass = p.alerted_tp ? 'profit' : p.alerted_sl ? 'loss' : '';
     const tpPct  = (((+p.take_profit - cost) / cost) * 100).toFixed(1);
     const slPct  = (((+p.stop_loss  - cost) / cost) * 100).toFixed(1);
@@ -1418,30 +1449,55 @@ function renderPortfolio() {
     // 現價損益區塊
     let priceBlock = '';
     if (cp) {
-      const pnlPct = ((cp - cost) / cost * 100);
-      const pnlAmt = (cp - cost) * shares;
-      const color  = pnlPct >= 0 ? 'var(--up)' : 'var(--down)';
-      const arrow  = pnlPct >= 0 ? '▲' : '▼';
-      priceBlock = `
-        <div style="grid-column:1/-1;background:var(--surface);border-radius:8px;padding:.6rem 1rem;
-                    display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center;margin-top:.25rem">
-          <div>
-            <div style="font-size:.65rem;color:var(--muted);margin-bottom:.1rem">現價</div>
-            <div style="font-family:var(--mono);font-size:.95rem;font-weight:600;color:${color}">
-              ${arrow} $${cp}
-            </div>
-          </div>
-          <div>
-            <div style="font-size:.65rem;color:var(--muted);margin-bottom:.1rem">損益%</div>
-            <div style="font-family:var(--mono);font-size:.95rem;font-weight:600;color:${color}">
-              ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%
+      // 成本損益
+      const costPnlPct = ((cp - cost) / cost * 100);
+      const costPnlAmt = (cp - cost) * shares;
+      const costColor  = costPnlPct >= 0 ? 'var(--up)' : 'var(--down)';
+
+      // 今日損益（vs 昨收）
+      let todayBlock = '';
+      if (pc) {
+        const todayPct = ((cp - pc) / pc * 100);
+        const todayAmt = (cp - pc) * shares;
+        const todayColor = todayPct >= 0 ? 'var(--up)' : 'var(--down)';
+        const todayArrow = todayPct >= 0 ? '▲' : '▼';
+        todayBlock = `
+          <div style="border-left:1px solid var(--border);padding-left:1.25rem;margin-left:.25rem">
+            <div style="font-size:.6rem;color:var(--muted);margin-bottom:.1rem">今日漲跌</div>
+            <div style="font-family:var(--mono);font-size:.9rem;font-weight:600;color:${todayColor}">
+              ${todayArrow} ${todayPct >= 0 ? '+' : ''}${todayPct.toFixed(2)}%
             </div>
           </div>
           ${shares > 0 ? `
           <div>
-            <div style="font-size:.65rem;color:var(--muted);margin-bottom:.1rem">損益金額</div>
-            <div style="font-family:var(--mono);font-size:.95rem;font-weight:600;color:${color}">
-              ${pnlAmt >= 0 ? '+' : ''}${pnlAmt.toFixed(0)} 元
+            <div style="font-size:.6rem;color:var(--muted);margin-bottom:.1rem">今日損益</div>
+            <div style="font-family:var(--mono);font-size:.9rem;font-weight:600;color:${todayColor}">
+              ${todayAmt >= 0 ? '+' : ''}${todayAmt.toFixed(0)} 元
+            </div>
+          </div>` : ''}`;
+      }
+
+      priceBlock = `
+        <div style="grid-column:1/-1;background:var(--surface);border-radius:8px;padding:.6rem 1rem;
+                    display:flex;gap:1.25rem;flex-wrap:wrap;align-items:center;margin-top:.25rem">
+          <div>
+            <div style="font-size:.6rem;color:var(--muted);margin-bottom:.1rem">現價</div>
+            <div style="font-family:var(--mono);font-size:.95rem;font-weight:600;color:${costColor}">
+              $${cp}
+            </div>
+          </div>
+          ${todayBlock}
+          <div style="border-left:1px solid var(--border);padding-left:1.25rem;margin-left:.25rem">
+            <div style="font-size:.6rem;color:var(--muted);margin-bottom:.1rem">成本損益%</div>
+            <div style="font-family:var(--mono);font-size:.9rem;font-weight:600;color:${costColor}">
+              ${costPnlPct >= 0 ? '+' : ''}${costPnlPct.toFixed(2)}%
+            </div>
+          </div>
+          ${shares > 0 ? `
+          <div>
+            <div style="font-size:.6rem;color:var(--muted);margin-bottom:.1rem">成本損益金額</div>
+            <div style="font-family:var(--mono);font-size:.9rem;font-weight:600;color:${costColor}">
+              ${costPnlAmt >= 0 ? '+' : ''}${costPnlAmt.toFixed(0)} 元
             </div>
           </div>` : ''}
         </div>`;
