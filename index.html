@@ -1028,54 +1028,108 @@
 
 <script>
 // ══════════════════════════════════════════
-//  資料管理（localStorage 模擬 portfolio.json）
+//  設定：只需填這兩個值
 // ══════════════════════════════════════════
 
-const STORAGE_KEY = 'twstock_portfolio';
+// Cloudflare Worker 網址（部署後填入）
+const WORKER_URL   = 'https://twstock-trigger.j7366515.workers.dev';
+
+// 觸發分析的密碼（給親友用，和 Worker 的 TRIGGER_PASS 一致）
+// 這不是 GitHub token，洩漏了頂多讓人多跑幾次分析
+const TRIGGER_PASS = 'qweasd123456';
+
+// ══════════════════════════════════════════
+//  持倉資料管理（透過 Worker 讀寫 Gist）
+// ══════════════════════════════════════════
+
+const STORAGE_KEY = 'twstock_portfolio_backup';
 let portfolio = [];
 let editingCode = null;
 
-function loadPortfolio() {
+async function loadPortfolio() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    portfolio = raw ? JSON.parse(raw) : getSamplePortfolio();
-  } catch(e) {
-    portfolio = getSamplePortfolio();
+    const backup = localStorage.getItem(STORAGE_KEY);
+    if (backup) { portfolio = JSON.parse(backup); renderPortfolio(); }
+  } catch {}
+
+  if (!WORKER_URL || WORKER_URL === 'REPLACE_WITH_YOUR_WORKER_URL') return;
+
+  try {
+    const r = await fetch(`${WORKER_URL}/portfolio`);
+    const data = await r.json();
+    if (data.ok) {
+      portfolio = data.portfolio;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(portfolio));
+      renderPortfolio();
+    }
+  } catch (e) {
+    console.warn('[Portfolio] 載入失敗，使用本機備份', e);
   }
 }
 
-function savePortfolio() {
+async function savePortfolio() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(portfolio));
-  // 同時輸出 JSON 供 Python 使用
-  updateJsonOutput();
+
+  if (!WORKER_URL || WORKER_URL === 'REPLACE_WITH_YOUR_WORKER_URL') {
+    showToast('⚠️ Worker 未設定，持倉僅存本機');
+    return;
+  }
+  try {
+    const r = await fetch(`${WORKER_URL}/portfolio`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ portfolio }),
+    });
+    const data = await r.json();
+    if (data.ok) showToast('✅ 持倉已同步到雲端');
+    else showToast(`❌ 同步失敗：${data.error}`);
+  } catch (e) {
+    console.error('[Portfolio] 同步失敗', e);
+    showToast('❌ 網路錯誤，同步失敗');
+  }
 }
 
-function getSamplePortfolio() {
-  return [
-    {
-      code: "2330", name: "台積電",
-      cost: 850, shares: 1000,
-      take_profit: 920, stop_loss: 810,
-      alerted_tp: false, alerted_sl: false,
-      entry_date: "2025-03-10",
-      note: "範例持倉，請修改或刪除"
+function getSamplePortfolio() { return []; }
+
+// ══════════════════════════════════════════
+//  手動觸發 GitHub Actions（透過 Worker）
+// ══════════════════════════════════════════
+
+async function triggerAnalysis() {
+  const btn = document.getElementById('trigger-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 觸發中...';
+
+  if (!WORKER_URL || WORKER_URL === 'REPLACE_WITH_YOUR_WORKER_URL') {
+    showToast('⚠️ Worker 未設定');
+    btn.disabled = false; btn.textContent = '▶ 手動觸發分析';
+    return;
+  }
+
+  try {
+    const res  = await fetch(`${WORKER_URL}/trigger`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: TRIGGER_PASS }),
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      showToast('✅ 已觸發！約 5～50 分鐘後 Discord 收到通知');
+      btn.textContent = '✅ 已觸發';
+      setTimeout(() => { btn.disabled = false; btn.textContent = '▶ 手動觸發分析'; }, 60000);
+    } else if (res.status === 403) {
+      showToast('❌ 觸發密碼錯誤');
+      btn.disabled = false; btn.textContent = '▶ 手動觸發分析';
+    } else {
+      showToast(`❌ 觸發失敗：${data.error || res.status}`);
+      btn.disabled = false; btn.textContent = '▶ 手動觸發分析';
     }
-  ];
+  } catch {
+    showToast('❌ 網路錯誤，請稍後再試');
+    btn.disabled = false; btn.textContent = '▶ 手動觸發分析';
+  }
 }
-
-// ══════════════════════════════════════════
-//  JSON 輸出區（供複製到 portfolio.json）
-// ══════════════════════════════════════════
-
-function updateJsonOutput() {
-  // 在 console 輸出最新的 portfolio JSON
-  console.log('=== portfolio.json 最新內容（請複製到 data/portfolio.json）===');
-  console.log(JSON.stringify(portfolio, null, 2));
-}
-
-// ══════════════════════════════════════════
-//  頁籤切換
-// ══════════════════════════════════════════
 
 function switchTab(el, page) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -1626,58 +1680,13 @@ function checkSession() {
 }
 
 // ══════════════════════════════════════════
-//  手動觸發 GitHub Actions
-//  透過 Cloudflare Worker 中繼，token 完全不在這裡
-//  親友只需要知道 TRIGGER_PASS 這組自訂密碼
-// ══════════════════════════════════════════
-
-// 部署 Cloudflare Worker 後，把 Worker 網址貼到這裡
-// 格式：https://twstock-trigger.你的帳號.workers.dev
-const WORKER_URL = 'https://twstock-trigger.j7366515.workers.dev';
-
-// 你設定在 Cloudflare Worker 環境變數的觸發密碼
-// 這組密碼可以告訴親友，只能觸發分析，不能做其他任何事
-const TRIGGER_PASS = 'qweasd123456';
-
-async function triggerAnalysis() {
-  const btn = document.getElementById('trigger-btn');
-  btn.disabled = true;
-  btn.textContent = '⏳ 觸發中...';
-
-  try {
-    const res = await fetch(WORKER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: TRIGGER_PASS }),
-    });
-
-    const data = await res.json();
-
-    if (data.ok) {
-      showToast('✅ 已觸發！約 5～50 分鐘後 Discord 收到通知');
-      btn.textContent = '✅ 已觸發';
-      setTimeout(() => { btn.disabled = false; btn.textContent = '▶ 手動觸發分析'; }, 60000);
-    } else if (res.status === 403) {
-      showToast('❌ 觸發密碼錯誤');
-      btn.disabled = false; btn.textContent = '▶ 手動觸發分析';
-    } else {
-      showToast(`❌ 觸發失敗：${data.error || res.status}`);
-      btn.disabled = false; btn.textContent = '▶ 手動觸發分析';
-    }
-  } catch {
-    showToast('❌ 網路錯誤，請稍後再試');
-    btn.disabled = false; btn.textContent = '▶ 手動觸發分析';
-  }
-}
-
-// ══════════════════════════════════════════
 //  主程式啟動
 // ══════════════════════════════════════════
 
 function startApp() {
   setInterval(updateClock, 1000);
   updateClock();
-  loadPortfolio();
+  loadPortfolio();   // async，自動在背景載入後重新 render
   renderPortfolio();
   loadData();
   setInterval(loadData, 5 * 60 * 1000);
