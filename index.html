@@ -1850,6 +1850,7 @@ function startApp() {
   renderPortfolio();
   loadData();
   setInterval(loadData, 5 * 60 * 1000);
+  setInterval(loadPortfolio, 5 * 60 * 1000);  // 每 5 分鐘重拉持倉現價
   document.getElementById('edit-modal').addEventListener('click', function(e) {
     if (e.target === this) closeEditModal();
   });
