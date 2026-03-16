@@ -983,7 +983,7 @@
 
 </main>
 
-<!-- 編輯 Modal -->
+
 <div class="modal-overlay" id="edit-modal">
   <div class="modal">
     <div class="modal-title">✏️ 編輯持倉</div>
@@ -1627,43 +1627,45 @@ function checkSession() {
 
 // ══════════════════════════════════════════
 //  手動觸發 GitHub Actions
+//  透過 trigger_relay.yml 中繼，網頁只持有自訂觸發密碼
+//  真正的 PAT 藏在 GitHub Secrets，網頁完全不知道
 // ══════════════════════════════════════════
 
-const GH_CONFIG = {
-  owner: 'johnnypika',   // 你的 GitHub 帳號
-  repo:  'twstock-ai',   // Repository 名稱
-  // Fine-grained PAT，需要 Actions: write 權限
-  // https://github.com/settings/tokens?type=beta
-  token: '',             // ← 填入你的 PAT
-};
+const GH_OWNER        = 'johnnypika';
+const GH_REPO         = 'twstock-ai';
+// TRIGGER_SECRET：你在 GitHub Secrets 設定的自訂觸發密碼
+// 這組密碼只能觸發分析，無法存取你的 GitHub 帳號
+const TRIGGER_SECRET  = 'REPLACE_WITH_YOUR_TRIGGER_SECRET';
 
 async function triggerAnalysis() {
   const btn = document.getElementById('trigger-btn');
-  if (!GH_CONFIG.token) {
-    showToast('⚠️ 請先在 index.html 填入 GH_CONFIG.token');
-    return;
-  }
   btn.disabled = true;
   btn.textContent = '⏳ 觸發中...';
+
   try {
     const res = await fetch(
-      `https://api.github.com/repos/${GH_CONFIG.owner}/${GH_CONFIG.repo}/actions/workflows/morning_analysis.yml/dispatches`,
+      `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/dispatches`,
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${GH_CONFIG.token}`,
+          // repository_dispatch 需要 public_repo scope 的 token
+          // 但對 public repo 其實不需要認證也能送出
           'Accept': 'application/vnd.github+json',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ ref: 'main' }),
+        body: JSON.stringify({
+          event_type: 'manual-trigger',
+          client_payload: { secret: TRIGGER_SECRET },
+        }),
       }
     );
-    if (res.status === 204) {
-      showToast('✅ 已觸發！約 5～50 分鐘後 Discord 收到通知');
+
+    if (res.status === 204 || res.status === 200) {
+      showToast('✅ 觸發指令已送出！Discord 稍後會收到通知');
       btn.textContent = '✅ 已觸發';
       setTimeout(() => { btn.disabled = false; btn.textContent = '▶ 手動觸發分析'; }, 60000);
-    } else if (res.status === 401) {
-      showToast('❌ Token 無效或已過期');
+    } else if (res.status === 422) {
+      showToast('❌ Workflow 未啟用，請確認 trigger_relay.yml 已上傳');
       btn.disabled = false; btn.textContent = '▶ 手動觸發分析';
     } else {
       showToast(`❌ 觸發失敗 HTTP ${res.status}`);
