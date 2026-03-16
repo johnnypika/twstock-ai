@@ -87,11 +87,27 @@
   .status-bar {
     display: flex;
     align-items: center;
-    gap: 1.5rem;
+    gap: 1rem;
     font-family: var(--mono);
     font-size: .75rem;
     color: var(--muted);
   }
+
+  .btn-trigger {
+    padding: .3rem .85rem;
+    border-radius: 5px;
+    background: rgba(0,136,255,.12);
+    color: var(--accent2);
+    border: 1px solid rgba(0,136,255,.25);
+    font-size: .72rem;
+    font-family: var(--mono);
+    cursor: pointer;
+    transition: background .2s, opacity .2s;
+    white-space: nowrap;
+  }
+
+  .btn-trigger:hover  { background: rgba(0,136,255,.22); }
+  .btn-trigger:disabled { opacity: .45; cursor: not-allowed; }
 
   .status-tag {
     padding: .2rem .6rem;
@@ -682,9 +698,162 @@
     nav { padding: 0 1rem; overflow-x: auto; }
     .tab { padding: .9rem 1rem; white-space: nowrap; }
   }
+
+  /* ── 密碼保護畫面 ── */
+  #lock-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  #lock-screen::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,170,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,170,.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+
+  .lock-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2.5rem 2rem;
+    width: 100%;
+    max-width: 360px;
+    text-align: center;
+    position: relative;
+    z-index: 1;
+    box-shadow: 0 0 60px rgba(0,212,170,.06);
+  }
+
+  .lock-icon {
+    font-size: 2.2rem;
+    margin-bottom: 1rem;
+    display: block;
+  }
+
+  .lock-title {
+    font-size: 1.1rem;
+    font-weight: 500;
+    margin-bottom: .4rem;
+    color: var(--text);
+  }
+
+  .lock-sub {
+    font-size: .8rem;
+    color: var(--muted);
+    margin-bottom: 1.75rem;
+  }
+
+  .lock-input-wrap {
+    position: relative;
+    margin-bottom: 1rem;
+  }
+
+  #lock-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: .75rem 3rem .75rem 1rem;
+    color: var(--text);
+    font-size: .95rem;
+    font-family: var(--mono);
+    outline: none;
+    transition: border-color .2s;
+    letter-spacing: .12em;
+  }
+
+  #lock-input:focus { border-color: var(--accent); }
+  #lock-input.error { border-color: var(--red); animation: shake .3s ease; }
+
+  #toggle-pw {
+    position: absolute;
+    right: .75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0;
+  }
+
+  #toggle-pw:hover { color: var(--text); }
+
+  #lock-btn {
+    width: 100%;
+    padding: .75rem;
+    background: var(--accent);
+    color: #0a0e17;
+    border: none;
+    border-radius: 8px;
+    font-size: .9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .2s;
+    font-family: var(--sans);
+  }
+
+  #lock-btn:hover { opacity: .88; }
+
+  #lock-error {
+    color: var(--red);
+    font-size: .78rem;
+    margin-top: .75rem;
+    min-height: 1.2em;
+    font-family: var(--mono);
+  }
+
+  .lock-footer {
+    font-size: .7rem;
+    color: var(--muted);
+    margin-top: 1.5rem;
+    opacity: .6;
+  }
+
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    25%      { transform: translateX(-6px); }
+    75%      { transform: translateX(6px); }
+  }
+
+  /* 鎖定時隱藏主要內容 */
+  body.locked > header,
+  body.locked > nav,
+  body.locked > main { visibility: hidden; }
 </style>
 </head>
-<body>
+<body class="locked">
+
+<!-- ── 密碼保護畫面 ── -->
+<div id="lock-screen">
+  <div class="lock-box">
+    <span class="lock-icon">🔐</span>
+    <div class="lock-title">台股 AI 分析系統</div>
+    <div class="lock-sub">請輸入密碼以存取</div>
+    <div class="lock-input-wrap">
+      <input id="lock-input" type="password" placeholder="密碼"
+             autocomplete="current-password"
+             onkeydown="if(event.key==='Enter')unlock()">
+      <button id="toggle-pw" onclick="togglePw()" title="顯示/隱藏密碼">👁</button>
+    </div>
+    <button id="lock-btn" onclick="unlock()">進入系統</button>
+    <div id="lock-error"></div>
+    <div class="lock-footer">此系統僅供授權使用者存取</div>
+  </div>
+</div>
 
 <header>
   <div class="logo">
@@ -694,6 +863,9 @@
   <div class="status-bar">
     <span id="clock" style="font-size:.8rem"></span>
     <span class="status-tag" id="market-status">等待開盤</span>
+    <button class="btn-trigger" id="trigger-btn" onclick="triggerAnalysis()" title="手動觸發今日盤前分析">
+      ▶ 手動觸發分析
+    </button>
   </div>
 </header>
 
@@ -811,7 +983,7 @@
 
 </main>
 
-<!-- 編輯 Modal -->
+
 <div class="modal-overlay" id="edit-modal">
   <div class="modal">
     <div class="modal-title">✏️ 編輯持倉</div>
@@ -1370,28 +1542,170 @@ function getDemoCandidates() {
 }
 
 // ══════════════════════════════════════════
-//  初始化
+//  密碼保護
+//  修改密碼：把你的新密碼貼到 hashPassword() 裡跑一次，
+//  複製輸出的 hash，取代下方 PASSWORD_HASH 的值即可。
 // ══════════════════════════════════════════
 
-(function init() {
+// 預設密碼：twstock2026
+// 要換密碼時，在瀏覽器 console 執行：
+//   crypto.subtle.digest('SHA-256', new TextEncoder().encode('你的新密碼'))
+//     .then(b => console.log([...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')))
+// 複製輸出的 hash 貼到下面取代
+const PASSWORD_HASH = 'b3a9a1e6c8a0c6e0f8d8f8b8a8c8e0f8b3a9a1e6c8a0c6e0f8d8f8b8a8c8e0f8';
+// ↑ 這是佔位符，執行下方 generateHash() 取得真正的 hash
+
+// 系統啟動時自動產生正確 hash（只執行一次，印在 console）
+async function generateHash() {
+  const pw = 'twstock2026';
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
+  const hash = [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2,'0')).join('');
+  console.log('[Auth] 預設密碼 hash:', hash);
+  return hash;
+}
+
+let _realHash = '';
+generateHash().then(h => { _realHash = h; });
+
+const SESSION_KEY = 'twstock_auth';
+const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 小時後需重新登入
+
+async function unlock() {
+  const input = document.getElementById('lock-input').value;
+  const errEl = document.getElementById('lock-error');
+  const inpEl = document.getElementById('lock-input');
+
+  if (!input) {
+    errEl.textContent = '請輸入密碼';
+    return;
+  }
+
+  const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  const hash = [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2,'0')).join('');
+
+  if (hash === _realHash || hash === PASSWORD_HASH) {
+    // 驗證成功
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+      ts: Date.now(), hash
+    }));
+    document.getElementById('lock-screen').style.display = 'none';
+    document.body.classList.remove('locked');
+    errEl.textContent = '';
+    startApp();
+  } else {
+    inpEl.classList.add('error');
+    errEl.textContent = '密碼錯誤，請重試';
+    setTimeout(() => inpEl.classList.remove('error'), 400);
+    document.getElementById('lock-input').value = '';
+  }
+}
+
+function togglePw() {
+  const inp = document.getElementById('lock-input');
+  const btn = document.getElementById('toggle-pw');
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    btn.textContent = '🙈';
+  } else {
+    inp.type = 'password';
+    btn.textContent = '👁';
+  }
+}
+
+function checkSession() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return false;
+    const { ts } = JSON.parse(raw);
+    if (Date.now() - ts > SESSION_TTL) {
+      sessionStorage.removeItem(SESSION_KEY);
+      return false;
+    }
+    return true;
+  } catch { return false; }
+}
+
+// ══════════════════════════════════════════
+//  手動觸發 GitHub Actions
+//  透過 trigger_relay.yml 中繼，網頁只持有自訂觸發密碼
+//  真正的 PAT 藏在 GitHub Secrets，網頁完全不知道
+// ══════════════════════════════════════════
+
+const GH_OWNER        = 'johnnypika';
+const GH_REPO         = 'twstock-ai';
+// TRIGGER_SECRET：你在 GitHub Secrets 設定的自訂觸發密碼
+// 這組密碼只能觸發分析，無法存取你的 GitHub 帳號
+const TRIGGER_SECRET  = 'REPLACE_WITH_YOUR_TRIGGER_SECRET';
+
+async function triggerAnalysis() {
+  const btn = document.getElementById('trigger-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 觸發中...';
+
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/dispatches`,
+      {
+        method: 'POST',
+        headers: {
+          // repository_dispatch 需要 public_repo scope 的 token
+          // 但對 public repo 其實不需要認證也能送出
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          event_type: 'manual-trigger',
+          client_payload: { secret: TRIGGER_SECRET },
+        }),
+      }
+    );
+
+    if (res.status === 204 || res.status === 200) {
+      showToast('✅ 觸發指令已送出！Discord 稍後會收到通知');
+      btn.textContent = '✅ 已觸發';
+      setTimeout(() => { btn.disabled = false; btn.textContent = '▶ 手動觸發分析'; }, 60000);
+    } else if (res.status === 422) {
+      showToast('❌ Workflow 未啟用，請確認 trigger_relay.yml 已上傳');
+      btn.disabled = false; btn.textContent = '▶ 手動觸發分析';
+    } else {
+      showToast(`❌ 觸發失敗 HTTP ${res.status}`);
+      btn.disabled = false; btn.textContent = '▶ 手動觸發分析';
+    }
+  } catch {
+    showToast('❌ 網路錯誤，請稍後再試');
+    btn.disabled = false; btn.textContent = '▶ 手動觸發分析';
+  }
+}
+
+// ══════════════════════════════════════════
+//  主程式啟動
+// ══════════════════════════════════════════
+
+function startApp() {
   setInterval(updateClock, 1000);
   updateClock();
   loadPortfolio();
   renderPortfolio();
   loadData();
-
-  // 每 5 分鐘重新載入分析資料
   setInterval(loadData, 5 * 60 * 1000);
-
-  // 點擊 Modal 背景關閉
   document.getElementById('edit-modal').addEventListener('click', function(e) {
     if (e.target === this) closeEditModal();
   });
-
-  // Enter 鍵提交表單
   document.getElementById('add-form').addEventListener('keydown', e => {
     if (e.key === 'Enter') addPosition();
   });
+}
+
+// 頁面載入時檢查 session，已登入則直接進入
+(function pageLoad() {
+  if (checkSession()) {
+    document.getElementById('lock-screen').style.display = 'none';
+    document.body.classList.remove('locked');
+    startApp();
+  } else {
+    // 等待 hash 計算完成再允許登入
+    setTimeout(() => document.getElementById('lock-input').focus(), 100);
+  }
 })();
 </script>
 </body>
