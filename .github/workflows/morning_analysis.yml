@@ -92,3 +92,11 @@ jobs:
           git diff --staged --quiet || git commit -m "chore: 更新今日分析資料 $(TZ='Asia/Taipei' date '+%Y-%m-%d %H:%M')"
           git pull --rebase origin main
           git push
+
+      - name: 盤前完成後立即執行一次持倉監控
+        if: steps.schedule_check.outputs.run_layer12 == 'true'
+        env:
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: python scripts/layer3_monitor.py
