@@ -65,12 +65,8 @@ def run():
         pos["last_updated"]   = now_str
         any_updated = True
 
-        print(
-            f"  {name}({code}) "
-            f"現價:{price} "
-            f"成本損益:{cost_pnl_pct:+.2f}% "
-            f"今日:{today_pnl_pct:+.2f}%" if today_pnl_pct else f"今日:N/A"
-        )
+        today_str = f"{today_pnl_pct:+.2f}%" if today_pnl_pct is not None else "N/A"
+        print(f"  {name}({code}) 現價:{price} 成本損益:{cost_pnl_pct:+.2f}% 今日:{today_str}")
 
         # 停利警報
         if price >= tp and not pos.get("alerted_tp"):
