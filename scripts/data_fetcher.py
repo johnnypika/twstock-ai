@@ -10,7 +10,71 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (TaiwanStockAI/2.0)"}
 
 
 def get_all_stocks() -> list:
-    """抓取全市場上市股票今日行情"""
+    """
+    抓取全市場上市股票行情：
+    - 盤中（09:00～13:30）：用 TWSE 即時全市場 API，取得今日漲跌
+    - 盤後 / 開盤前：用 STOCK_DAY_ALL（前一交易日收盤）
+    """
+    from datetime import datetime, timezone, timedelta
+    TW   = timezone(timedelta(hours=8))
+    now  = datetime.now(TW)
+    hour = now.hour
+    minute = now.minute
+    t = hour * 60 + minute
+    is_market_hours = (9 * 60 <= t < 13 * 60 + 35)
+
+    if is_market_hours:
+        result = _get_stocks_intraday()
+        if result:
+            return result
+        print("[TWSE] 盤中 API 無資料，改用 STOCK_DAY_ALL")
+
+    return _get_stocks_day_all()
+
+
+def _get_stocks_intraday() -> list:
+    """盤中：用 mis.twse.com.tw 即時全市場 API"""
+    # tse_%5F.tw 是 TWSE 全市場即時行情的特殊代碼
+    url = (
+        "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
+        "?ex_ch=tse_%5F.tw&json=1&delay=0"
+    )
+    try:
+        r     = requests.get(url, headers=HEADERS, timeout=20)
+        items = r.json().get("msgArray", [])
+        result = []
+        for item in items:
+            code = (item.get("c") or "").strip()
+            name = (item.get("n") or "").strip()
+            z    = item.get("z", "-")   # 成交價
+            y    = item.get("y", "-")   # 昨收
+            v    = item.get("v", "0")   # 成交量（張）
+            if not code or not name or not z or z == "-":
+                continue
+            try:
+                price      = float(z)
+                prev_close = float(y) if y and y != "-" else price
+                change     = round(price - prev_close, 2)
+                change_pct = round(change / prev_close * 100, 2) if prev_close else 0
+                volume     = int(float(v) * 1000) if v and v != "-" else 0
+                turnover   = int(price * volume)
+                result.append({
+                    "code": code, "name": name,
+                    "price": price, "change": change,
+                    "change_pct": change_pct,
+                    "volume": volume, "turnover": turnover,
+                })
+            except Exception:
+                continue
+        print(f"[TWSE] 盤中全市場：取得 {len(result)} 筆")
+        return result
+    except Exception as e:
+        print(f"[TWSE] 盤中全市場 API 失敗: {e}")
+        return []
+
+
+def _get_stocks_day_all() -> list:
+    """盤後/開盤前：STOCK_DAY_ALL（前一交易日收盤資料）"""
     url = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
     try:
         r = requests.get(url, headers=HEADERS, timeout=20)
@@ -35,9 +99,10 @@ def get_all_stocks() -> list:
                 })
             except Exception:
                 continue
+        print(f"[TWSE] STOCK_DAY_ALL：取得 {len(result)} 筆")
         return result
     except Exception as e:
-        print(f"[TWSE] 全市場報價失敗: {e}")
+        print(f"[TWSE] STOCK_DAY_ALL 失敗: {e}")
         return []
 
 
