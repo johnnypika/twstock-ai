@@ -963,20 +963,24 @@
         <div id="sum-count" style="font-family:var(--mono);font-size:1rem;font-weight:600">0 檔</div>
       </div>
       <div>
-        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.2rem">今日損益金額</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.2rem">總成本</div>
+        <div id="sum-total-cost" style="font-family:var(--mono);font-size:1rem;font-weight:600">—</div>
+      </div>
+      <div style="border-left:1px solid var(--border);padding-left:2rem">
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.2rem">未實現損益</div>
+        <div id="sum-pnl-amount" style="font-family:var(--mono);font-size:1rem;font-weight:600">—</div>
+      </div>
+      <div>
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.2rem">未實現損益%</div>
+        <div id="sum-pnl-pct" style="font-family:var(--mono);font-size:1rem;font-weight:600">—</div>
+      </div>
+      <div style="border-left:1px solid var(--border);padding-left:2rem">
+        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.2rem">今日損益</div>
         <div id="sum-today-amount" style="font-family:var(--mono);font-size:1rem;font-weight:600">—</div>
       </div>
       <div>
         <div style="font-size:.7rem;color:var(--muted);margin-bottom:.2rem">今日損益%</div>
         <div id="sum-today-pct" style="font-family:var(--mono);font-size:1rem;font-weight:600">—</div>
-      </div>
-      <div style="border-left:1px solid var(--border);padding-left:2rem">
-        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.2rem">總損益金額（成本）</div>
-        <div id="sum-pnl-amount" style="font-family:var(--mono);font-size:1rem;font-weight:600">—</div>
-      </div>
-      <div>
-        <div style="font-size:.7rem;color:var(--muted);margin-bottom:.2rem">總損益%（成本）</div>
-        <div id="sum-pnl-pct" style="font-family:var(--mono);font-size:1rem;font-weight:600">—</div>
       </div>
       <div style="margin-left:auto;font-size:.7rem;color:var(--muted)" id="sum-update-time"></div>
     </div>
@@ -1459,11 +1463,15 @@ function renderPortfolio() {
   // 總損益計算（成本基準 + 今日基準）
   let totalCost = 0, totalValue = 0, hasPrice = false;
   let totalPrevValue = 0, hasPrevClose = false;
+  let rawTotalCost = 0;   // 不管有沒有現價，只要有股數就計算成本
   portfolio.forEach(p => {
     const cost   = +p.cost;
     const shares = +p.shares || 0;
     const cp     = p.current_price  || null;
     const pc     = p.prev_close     || null;
+    if (shares > 0) {
+      rawTotalCost += cost * shares;
+    }
     if (cp && shares > 0) {
       totalCost  += cost * shares;
       totalValue += cp   * shares;
@@ -1476,6 +1484,14 @@ function renderPortfolio() {
   });
   sumEl.style.display = 'flex';
   document.getElementById('sum-count').textContent = `${portfolio.length} 檔`;
+
+  // 總成本（不依賴現價，只要有股數就顯示）
+  if (rawTotalCost > 0) {
+    document.getElementById('sum-total-cost').textContent =
+      `${rawTotalCost.toLocaleString()} 元`;
+  } else {
+    document.getElementById('sum-total-cost').textContent = '— （未填股數）';
+  }
 
   // 今日損益（現價 vs 昨收）
   if (hasPrevClose) {
@@ -1491,7 +1507,7 @@ function renderPortfolio() {
     document.getElementById('sum-today-pct').textContent = '—';
   }
 
-  // 總損益（現價 vs 成本）
+  // 未實現損益（現價 vs 成本）
   if (hasPrice && totalCost > 0) {
     const totalPnlAmt = totalValue - totalCost;
     const totalPnlPct = (totalPnlAmt / totalCost * 100);
