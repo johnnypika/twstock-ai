@@ -33,43 +33,82 @@ def get_all_stocks() -> list:
 
 
 def _get_stocks_intraday() -> list:
-    """盤中：用 mis.twse.com.tw 即時全市場 API"""
-    # tse_%5F.tw 是 TWSE 全市場即時行情的特殊代碼
+    """盤中：用 MI_INDEX API 取得當日全市場即時行情"""
+    import time
+    ts  = int(time.time() * 1000)
     url = (
-        "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
-        "?ex_ch=tse_%5F.tw&json=1&delay=0"
+        f"https://www.twse.com.tw/exchangeReport/MI_INDEX"
+        f"?response=json&type=ALL&_={ts}"
     )
     try:
-        r     = requests.get(url, headers=HEADERS, timeout=20)
-        items = r.json().get("msgArray", [])
+        r    = requests.get(url, headers=HEADERS, timeout=20)
+        data = r.json()
+
+        # fields9 是個股欄位名稱，data9 是個股資料
+        fields = data.get("fields9", [])
+        rows   = data.get("data9", [])
+
+        if not fields or not rows:
+            print(f"[TWSE] MI_INDEX 無 data9，status={data.get('stat')}")
+            return []
+
+        # 找欄位索引
+        def idx(name):
+            try: return fields.index(name)
+            except ValueError: return None
+
+        i_code   = idx("證券代號")
+        i_name   = idx("證券名稱")
+        i_close  = idx("收盤價")
+        i_change = idx("漲跌價差")
+        i_vol    = idx("成交股數")
+        i_turn   = idx("成交金額")
+        i_sign   = idx("漲跌(+/-)")
+
+        if i_code is None or i_name is None or i_close is None:
+            print(f"[TWSE] MI_INDEX 欄位不符，fields={fields[:5]}")
+            return []
+
         result = []
-        for item in items:
-            code = (item.get("c") or "").strip()
-            name = (item.get("n") or "").strip()
-            z    = item.get("z", "-")   # 成交價
-            y    = item.get("y", "-")   # 昨收
-            v    = item.get("v", "0")   # 成交量（張）
-            if not code or not name or not z or z == "-":
-                continue
+        for row in rows:
             try:
-                price      = float(z)
-                prev_close = float(y) if y and y != "-" else price
-                change     = round(price - prev_close, 2)
-                change_pct = round(change / prev_close * 100, 2) if prev_close else 0
-                volume     = int(float(v) * 1000) if v and v != "-" else 0
-                turnover   = int(price * volume)
+                code  = row[i_code].strip()
+                name  = row[i_name].strip()
+                close_str = row[i_close].replace(",", "").strip()
+                if not close_str or close_str in ("-", "--", ""):
+                    continue
+                close  = float(close_str)
+                change_str = row[i_change].replace(",", "").strip() if i_change else "0"
+                change = float(change_str) if change_str and change_str not in ("-","--","") else 0.0
+
+                # 漲跌符號：html tag 包含 color:red → 漲，color:green → 跌
+                if i_sign is not None:
+                    sign_html = row[i_sign]
+                    if "green" in sign_html:
+                        change = -abs(change)
+                    elif "red" in sign_html:
+                        change = abs(change)
+
+                prev = close - change
+                chg_pct = round(change / prev * 100, 2) if prev > 0 else 0.0
+
+                vol  = int(row[i_vol].replace(",","")) if i_vol is not None else 0
+                turn = int(row[i_turn].replace(",","")) if i_turn is not None else 0
+
                 result.append({
                     "code": code, "name": name,
-                    "price": price, "change": change,
-                    "change_pct": change_pct,
-                    "volume": volume, "turnover": turnover,
+                    "price": close, "change": change,
+                    "change_pct": chg_pct,
+                    "volume": vol, "turnover": turn,
                 })
             except Exception:
                 continue
-        print(f"[TWSE] 盤中全市場：取得 {len(result)} 筆")
+
+        print(f"[TWSE] MI_INDEX 盤中全市場：取得 {len(result)} 筆")
         return result
+
     except Exception as e:
-        print(f"[TWSE] 盤中全市場 API 失敗: {e}")
+        print(f"[TWSE] MI_INDEX 失敗: {e}")
         return []
 
 
