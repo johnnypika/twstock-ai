@@ -12,9 +12,9 @@
     "note": "",
     "current_price": 1845.0,
     "pnl_pct": 23.0,
-    "last_updated": "18:47",
-    "prev_close": 1865.0,
-    "today_pnl_pct": -1.07
+    "last_updated": "09:45",
+    "prev_close": null,
+    "today_pnl_pct": null
   },
   {
     "code": "00631L",
@@ -29,8 +29,8 @@
     "note": "",
     "current_price": 463.6,
     "pnl_pct": 1.89,
-    "last_updated": "18:47",
-    "prev_close": 464.65,
-    "today_pnl_pct": -0.23
+    "last_updated": "09:45",
+    "prev_close": null,
+    "today_pnl_pct": null
   }
 ]
