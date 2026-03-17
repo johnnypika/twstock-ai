@@ -145,39 +145,105 @@ def _get_stocks_day_all() -> list:
         return []
 
 
-def get_stock_price(code: str) -> float | None:
-    """取得單一股票即時成交價"""
-    info = get_stock_info(code)
-    return info.get("price") if info else None
-
-
 def get_stock_info(code: str) -> dict | None:
     """
-    取得單一股票的即時資訊，包含：
-      price      : 最新成交價
-      prev_close : 昨日收盤價（今日平盤）
+    取得單一股票的即時資訊（price, prev_close）
+    使用 MI_INDEX 盤中資料，不需要 session cookie
     """
-    # 先嘗試上市（tse），失敗再試上櫃（otc）
-    for market in ("tse", "otc"):
-        url = (
-            f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
-            f"?ex_ch={market}_{code}.tw&json=1&delay=0"
-        )
-        try:
-            r     = requests.get(url, headers=HEADERS, timeout=8)
-            items = r.json().get("msgArray", [])
-            if not items:
+    # 先嘗試從盤中快取取得
+    data = _get_mi_index_cache()
+    if code in data:
+        return data[code]
+
+    # 若快取沒有（可能盤後），改用 STOCK_DAY 歷史資料
+    return _get_stock_day_price(code)
+
+
+_mi_cache: dict = {}
+_mi_cache_time: float = 0.0
+
+def _get_mi_index_cache() -> dict:
+    """取得 MI_INDEX 全市場資料，每次呼叫至多 60 秒重新抓一次"""
+    import time as _time
+    global _mi_cache, _mi_cache_time
+    now = _time.time()
+    if now - _mi_cache_time < 60 and _mi_cache:
+        return _mi_cache
+
+    ts  = int(now * 1000)
+    url = f"https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&type=ALL&_={ts}"
+    try:
+        r      = requests.get(url, headers=HEADERS, timeout=15)
+        data   = r.json()
+        fields = data.get("fields9", [])
+        rows   = data.get("data9", [])
+        if not fields or not rows:
+            return _mi_cache  # 回傳舊快取
+
+        def idx(n):
+            try: return fields.index(n)
+            except ValueError: return None
+
+        i_code  = idx("證券代號")
+        i_name  = idx("證券名稱")
+        i_close = idx("收盤價")
+        i_prev  = None  # MI_INDEX 沒有直接提供昨收，用開盤前資料補
+        i_sign  = idx("漲跌(+/-)")
+        i_chg   = idx("漲跌價差")
+
+        if i_code is None or i_close is None:
+            return _mi_cache
+
+        result = {}
+        for row in rows:
+            try:
+                code  = row[i_code].strip()
+                cs    = row[i_close].replace(",","").strip()
+                if not cs or cs in ("-","--"): continue
+                close = float(cs)
+                chg   = 0.0
+                if i_chg is not None:
+                    ds = row[i_chg].replace(",","").strip()
+                    if ds and ds not in ("-","--"):
+                        chg = float(ds)
+                        if i_sign is not None and "green" in row[i_sign]:
+                            chg = -abs(chg)
+                prev_close = round(close - chg, 2) if chg else None
+                result[code] = {"price": close, "prev_close": prev_close}
+            except Exception:
                 continue
-            item = items[0]
-            z = item.get("z", "-")   # 即時成交價
-            y = item.get("y", "-")   # 昨收價
-            price      = float(z) if z and z != "-" else None
-            prev_close = float(y) if y and y != "-" else None
-            if price or prev_close:
-                return {"price": price, "prev_close": prev_close}
-        except Exception:
-            continue
+
+        _mi_cache      = result
+        _mi_cache_time = now
+        print(f"[TWSE] MI_INDEX 快取更新：{len(result)} 筆")
+        return result
+    except Exception as e:
+        print(f"[TWSE] MI_INDEX 快取失敗: {e}")
+        return _mi_cache
+
+
+def _get_stock_day_price(code: str) -> dict | None:
+    """盤後備援：從 STOCK_DAY 取最新收盤價"""
+    from datetime import datetime
+    today  = datetime.today().strftime("%Y%m%d")
+    url    = f"https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=json&date={today}&stockNo={code}"
+    try:
+        r    = requests.get(url, headers=HEADERS, timeout=10)
+        data = r.json()
+        rows = data.get("data", [])
+        if rows:
+            last  = rows[-1]
+            price = float(last[6].replace(",",""))  # 收盤價欄位
+            return {"price": price, "prev_close": None}
+    except Exception:
+        pass
     return None
+
+
+def get_stock_price(code: str) -> float | None:
+    """取得單一股票即時成交價（向後相容介面）"""
+    info = get_stock_info(code)
+    return info.get("price") if info else None
 
 
 def get_taiex() -> dict:
