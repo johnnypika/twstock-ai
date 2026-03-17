@@ -77,34 +77,60 @@ def get_stock_info(code: str) -> dict | None:
 
 
 def get_taiex() -> dict:
-    """大盤加權指數最新收盤資料（取最近一個交易日，不限今日）"""
-    url = "https://openapi.twse.com.tw/v1/exchangeReport/TAIEX"
+    """
+    大盤加權指數資料，依序嘗試多個來源：
+    1. TWSE 即時大盤（盤中有效）
+    2. TWSE 歷史收盤（盤前/收盤後有效）
+    回傳最近一筆有效資料，週一盤前會回傳上週五收盤。
+    """
+
+    # ── 來源一：TWSE 即時大盤指數（盤中才有資料）──
     try:
+        url = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_t00.tw&json=1&delay=0"
+        r   = requests.get(url, headers=HEADERS, timeout=8)
+        items = r.json().get("msgArray", [])
+        if items:
+            item = items[0]
+            z = item.get("z", "-")
+            y = item.get("y", "-")
+            price = float(z) if z and z != "-" else None
+            prev  = float(y) if y and y != "-" else None
+            if price and price > 0:
+                change     = round(price - prev, 2) if prev else 0
+                change_pct = round(change / prev * 100, 2) if prev else 0
+                print(f"[TWSE] 即時大盤：{price} 點 {change_pct:+.2f}%")
+                return {
+                    "date": "今日", "close": price,
+                    "change": change, "change_pct": change_pct,
+                    "prev_close": prev,
+                }
+    except Exception as e:
+        print(f"[TWSE] 即時大盤失敗: {e}")
+
+    # ── 來源二：TWSE 歷史收盤資料（盤前/休市時使用）──
+    try:
+        url  = "https://openapi.twse.com.tw/v1/exchangeReport/TAIEX"
         r    = requests.get(url, headers=HEADERS, timeout=10)
         data = r.json()
-        # 取最後一筆有效資料（週一盤前抓到的是上週五收盤，仍然有效）
-        if data:
-            last = data[-1]
-            result = {
-                "date":       last.get("Date", ""),
-                "close":      float(last.get("CloseIndex", 0) or 0),
-                "change":     float(last.get("Change", 0) or 0),
-                "change_pct": float(last.get("ChangePercent", 0) or 0),
-            }
-            if result["close"] > 0:
-                print(f"[TWSE] 大盤資料：{result['date']} 收盤 {result['close']} 點 {result['change_pct']:+.2f}%")
-                return result
+        # 找最後一筆有效資料
+        for last in reversed(data):
+            close = float(last.get("CloseIndex", 0) or 0)
+            if close > 0:
+                change     = float(last.get("Change", 0) or 0)
+                change_pct = float(last.get("ChangePercent", 0) or 0)
+                date_str   = last.get("Date", "")
+                print(f"[TWSE] 歷史收盤大盤：{date_str} {close} 點 {change_pct:+.2f}%")
+                return {
+                    "date": date_str, "close": close,
+                    "change": change, "change_pct": change_pct,
+                }
     except Exception as e:
-        print(f"[TWSE] 大盤資料失敗: {e}")
+        print(f"[TWSE] 歷史收盤大盤失敗: {e}")
 
-    # 備援：回傳中性預設值，讓 LLM 知道資料暫時無法取得
-    print("[TWSE] 大盤資料無法取得，使用備援預設值")
+    print("[TWSE] 大盤資料所有來源均失敗，使用備援預設值")
     return {
-        "date":       "N/A",
-        "close":      0,
-        "change":     0,
-        "change_pct": 0,
-        "note":       "資料暫時無法取得，請依近期走勢判斷",
+        "date": "N/A", "close": 0, "change": 0, "change_pct": 0,
+        "note": "資料暫時無法取得，請依近期走勢判斷",
     }
 
 
