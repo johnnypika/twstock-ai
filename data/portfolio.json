@@ -12,7 +12,7 @@
     "note": "",
     "current_price": 1840.0,
     "pnl_pct": 22.67,
-    "last_updated": "13:08",
+    "last_updated": "15:36",
     "prev_close": 1850.0,
     "today_pnl_pct": -0.54
   },
@@ -27,10 +27,10 @@
     "alerted_sl": false,
     "entry_date": "2026-03-16",
     "note": "",
-    "current_price": 467.8,
-    "pnl_pct": 2.81,
-    "last_updated": "13:08",
+    "current_price": 469.35,
+    "pnl_pct": 3.15,
+    "last_updated": "15:36",
     "prev_close": 472.5,
-    "today_pnl_pct": -0.99
+    "today_pnl_pct": -0.67
   }
 ]
