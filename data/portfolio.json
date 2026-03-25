@@ -10,11 +10,11 @@
     "alerted_sl": false,
     "entry_date": "2026-03-16",
     "note": "",
-    "current_price": 1810.0,
-    "pnl_pct": 20.67,
-    "last_updated": "16:00",
+    "current_price": 1855.0,
+    "pnl_pct": 23.67,
+    "last_updated": "13:17",
     "prev_close": 1810.0,
-    "today_pnl_pct": 0.0
+    "today_pnl_pct": 2.49
   },
   {
     "code": "00631L",
@@ -29,8 +29,8 @@
     "note": "",
     "current_price": 443.15,
     "pnl_pct": -2.6,
-    "last_updated": "16:00",
-    "prev_close": 442.8,
-    "today_pnl_pct": 0.08
+    "last_updated": "13:17",
+    "prev_close": 443.15,
+    "today_pnl_pct": 0.0
   }
 ]
